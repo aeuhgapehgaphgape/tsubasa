@@ -4,7 +4,7 @@ from aiogram.filters import Command
 
 # ================== CONFIG ==================
 TOKEN = "8711733093:AAFW6v-A_RysewWfpsOqIDZVEztU3Bf1Fxs"
-CHAT_ID = -1003857846789
+CHAT_ID = -1003284226593
 
 PHOTO = "https://img3.akspic.ru/crops/5/2/7/5/1/115725/115725-animacionnoe_muzykalnoe_video-ken_kaneki-vurdalak-anime-tokio_vurdalak-1920x1080.jpg"
 
