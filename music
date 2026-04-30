@@ -1,0 +1,145 @@
+import asyncio
+import os
+from collections import defaultdict, deque
+
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from yt_dlp import YoutubeDL
+
+BOT_TOKEN = "8755474752:AAFKdSjB5qMiyp9C972e8LCDNGABR_LQ_Bo"
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+os.makedirs("music", exist_ok=True)
+
+# очередь треков по чатам
+queues = defaultdict(deque)
+
+
+# ---------- загрузка музыки ----------
+def download_song(query: str):
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": "music/%(title)s.%(ext)s",
+        "noplaylist": True,
+        "quiet": True,
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
+    }
+
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(f"ytsearch1:{query}", download=True)
+        video = info["entries"][0]
+
+        title = video["title"]
+        file = ydl.prepare_filename(video)
+        file = file.rsplit(".", 1)[0] + ".mp3"
+
+        return file, title
+
+
+# ---------- кнопки ----------
+def player_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="▶️ Play", callback_data="play"),
+            InlineKeyboardButton(text="⏭️ Next", callback_data="next"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Stop", callback_data="stop"),
+        ]
+    ])
+
+
+# ---------- старт поиска ----------
+@dp.message(F.text.startswith("найти"))
+async def search(message: types.Message):
+    query = message.text.replace("найти", "").strip()
+    chat_id = message.chat.id
+
+    if not query:
+        await message.answer("Напиши: найти 505")
+        return
+
+    await message.answer("Ищу музыку...")
+
+    try:
+        file, title = download_song(query)
+
+        queues[chat_id].append((file, title))
+
+        await play_next(chat_id, message)
+
+    except Exception as e:
+        await message.answer(f"Ошибка: {e}")
+
+
+# ---------- проигрывание ----------
+async def play_next(chat_id, message=None):
+    if not queues[chat_id]:
+        if message:
+            await message.answer("Очередь пуста")
+        return
+
+    file, title = queues[chat_id][0]
+
+    if message:
+        await message.answer_audio(
+            types.FSInputFile(file),
+            title=title,
+            reply_markup=player_kb()
+        )
+
+
+# ---------- кнопки управления ----------
+@dp.callback_query()
+async def callback(call: types.CallbackQuery):
+    chat_id = call.message.chat.id
+
+    # next
+    if call.data == "next":
+        if queues[chat_id]:
+            old = queues[chat_id].popleft()
+            try:
+                os.remove(old[0])
+            except:
+                pass
+
+        await call.message.answer("Следующий трек...")
+        await play_next(chat_id, call.message)
+
+    # stop
+    elif call.data == "stop":
+        if queues[chat_id]:
+            for f, _ in queues[chat_id]:
+                try:
+                    os.remove(f)
+                except:
+                    pass
+            queues[chat_id].clear()
+
+        await call.message.answer("Плеер остановлен")
+
+    # play (просто повтор)
+    elif call.data == "play":
+        if queues[chat_id]:
+            file, title = queues[chat_id][0]
+            await call.message.answer_audio(
+                types.FSInputFile(file),
+                title=title,
+                reply_markup=player_kb()
+            )
+
+    await call.answer()
+
+
+# ---------- запуск ----------
+async def main():
+    await dp.start_polling(bot)
+
+if name == "main":
+    asyncio.run(main())
